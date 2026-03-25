@@ -8,6 +8,19 @@
 
 Connect [ComfyUI](https://github.com/comfyanonymous/ComfyUI) to your n8n workflows. Generate images and videos, upload reference images, poll for results, and download outputs — all without leaving n8n.
 
+![Workflow overview](Screenshots/workflow.png)
+
+## Why this toolkit?
+
+The existing ComfyUI node for n8n blocks execution until generation finishes. Under concurrent load (e.g. 1000 simultaneous requests) this means 1000 n8n executions all waiting in memory at the same time.
+
+This toolkit decouples submission from waiting:
+
+- **Submit** → returns `prompt_id` immediately, n8n execution is free
+- **Wait** → poll separately, only when you need the result
+- **Session ID** → maps `prompt_id` to a conversation or user, making chat-based AI pipelines straightforward
+- **Any workflow** → export your ComfyUI workflow in API format and paste it directly into the node. No custom wrappers needed.
+
 ## Nodes
 
 | Node | Description |
@@ -19,6 +32,16 @@ Connect [ComfyUI](https://github.com/comfyanonymous/ComfyUI) to your n8n workflo
 | **ComfyUI Image to Video** | Submits an image-to-video workflow to ComfyUI and returns `prompt_id`. |
 | **ComfyUI Wait Until Result** | Polls `/history` until the job completes. Outputs one item per generated file. |
 | **ComfyUI Get Results** | Downloads all generated files from ComfyUI and returns base64-encoded data. |
+
+## Screenshots
+
+| Node | Preview |
+|------|---------|
+| Generation nodes (Text/Image to Image/Video) | ![Generation node](Screenshots/node_gen_ai.png) |
+| Wait Until Result | ![Wait node](Screenshots/node_wait_until_result.png) |
+| Get Results | ![Get Results node](Screenshots/node_get_results.png) |
+| Upload Image | ![Upload node](Screenshots/node_upload_image.png) |
+| Session ID ↔ Prompt ID mapping | ![Session mapping](Screenshots/map_promptID_sessionID.png) |
 
 ## Typical Workflows
 

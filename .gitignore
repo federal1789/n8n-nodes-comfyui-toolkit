@@ -11,8 +11,8 @@ dist/
 *.log
 npm-debug.log*
 
-# Claude internal
-.claude/
+# Claude internal (keep agents, ignore local settings)
+.claude/settings.local.json
 
 # OS
 .DS_Store

@@ -10,58 +10,22 @@ Connect [ComfyUI](https://github.com/comfyanonymous/ComfyUI) to your n8n workflo
 
 ![Workflow overview](Screenshots/workflow.png)
 
+---
+
 ## Why this toolkit?
 
-The existing ComfyUI node for n8n blocks execution until generation finishes. Under concurrent load (e.g. 1000 simultaneous requests) this means 1000 n8n executions all waiting in memory at the same time.
+The existing ComfyUI node for n8n blocks execution until generation finishes. Under concurrent load this means every pending request holds an n8n execution in memory.
 
 This toolkit decouples submission from waiting:
 
-- **Submit** → returns `prompt_id` immediately, n8n execution is free
-- **Wait** → poll separately, only when you need the result
-- **Session ID** → maps `prompt_id` to a conversation or user, making chat-based AI pipelines straightforward
-- **Any workflow** → export your ComfyUI workflow in API format and paste it directly into the node. No custom wrappers needed.
+| | This toolkit | Other nodes |
+|---|---|---|
+| **Submission** | Returns `prompt_id` immediately, n8n is free | Blocks until generation completes |
+| **Concurrency** | Scales to any number of parallel jobs | Each job holds an n8n execution in memory |
+| **Chat support** | Session ID maps jobs to conversations | No session tracking |
+| **Workflow support** | Any ComfyUI workflow, paste API JSON directly | Often model-specific |
 
-## Nodes
-
-| Node | Description |
-|------|-------------|
-| **ComfyUI Upload Image** | Uploads a binary or base64 image to ComfyUI's input directory. Returns `filename` for use in workflow JSON. |
-| **ComfyUI Text to Image** | Submits a text-to-image workflow to ComfyUI and returns `prompt_id`. |
-| **ComfyUI Image to Image** | Submits an image-to-image workflow to ComfyUI and returns `prompt_id`. |
-| **ComfyUI Text to Video** | Submits a text-to-video workflow to ComfyUI and returns `prompt_id`. |
-| **ComfyUI Image to Video** | Submits an image-to-video workflow to ComfyUI and returns `prompt_id`. |
-| **ComfyUI Wait Until Result** | Polls `/history` until the job completes. Outputs one item per generated file. |
-| **ComfyUI Get Results** | Downloads all generated files from ComfyUI and returns base64-encoded data. |
-
-## Screenshots
-
-| Node | Preview |
-|------|---------|
-| Generation nodes (Text/Image to Image/Video) | ![Generation node](Screenshots/node_gen_ai.png) |
-| Wait Until Result | ![Wait node](Screenshots/node_wait_until_result.png) |
-| Get Results | ![Get Results node](Screenshots/node_get_results.png) |
-| Upload Image | ![Upload node](Screenshots/node_upload_image.png) |
-| Session ID ↔ Prompt ID mapping | ![Session mapping](Screenshots/map_promptID_sessionID.png) |
-
-## Typical Workflows
-
-**Text to Image**
-```
-[Trigger] ──► [Text to Image] ──► [Wait Until Result] ──► [Get Results]
-```
-
-**Image to Image / Image to Video**
-```
-[Trigger] ──► [Upload Image] ──► [Image to Image] ──► [Wait Until Result] ──► [Get Results]
-```
-
-## Prerequisites
-
-- **n8n** ≥ 1.0.0 (self-hosted)
-- **ComfyUI** running and reachable from your n8n instance
-- A ComfyUI workflow exported in **API format**
-
-> To export a workflow in API format: enable **Dev Mode** in ComfyUI settings (gear icon → Enable Dev Mode Options), then use **Save (API Format)**.
+---
 
 ## Installation
 
@@ -85,11 +49,54 @@ cd ~/.n8n/nodes
 npm install n8n-nodes-comfyui-toolkit
 ```
 
-Then restart n8n.
+---
 
-## Node Reference
+## Typical Workflows
+
+**Text to Image**
+```
+[Trigger] ──► [Text to Image] ──► [Wait Until Result] ──► [Get Results]
+```
+
+**Image to Image / Image to Video**
+```
+[Trigger] ──► [Upload Image] ──► [Image to Image] ──► [Wait Until Result] ──► [Get Results]
+```
+
+---
+
+## Nodes
+
+### Generation Nodes
+
+Submit a workflow to ComfyUI and return `prompt_id` immediately.
+
+![Generation node](Screenshots/node_gen_ai.png)
+
+| Node | Description |
+|------|-------------|
+| **ComfyUI Text to Image** | Submits a text-to-image workflow |
+| **ComfyUI Image to Image** | Submits an image-to-image workflow |
+| **ComfyUI Text to Video** | Submits a text-to-video workflow |
+| **ComfyUI Image to Video** | Submits an image-to-video workflow |
+
+**Parameters**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| ComfyUI URL | string | Base URL of your ComfyUI instance |
+| Session ID | string | Identifier to correlate this job with a conversation or request |
+| Workflow JSON | string | ComfyUI API-format workflow. Accepts both `{"prompt":{…}}` and the bare `{…}` prompt object. n8n expressions supported. |
+
+**Output:** `prompt_id`, `session_id`, `submitted: true`, `comfyui_url`
+
+---
 
 ### ComfyUI Upload Image
+
+Upload a reference image to ComfyUI before running an img2img or img2video workflow.
+
+![Upload Image node](Screenshots/node_upload_image.png)
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
@@ -100,41 +107,35 @@ Then restart n8n.
 | Subfolder | string | Optional subfolder inside ComfyUI's `input/` directory |
 | Overwrite | boolean | Overwrite an existing file with the same name |
 
-**Output:** all input JSON fields plus `filename`, `subfolder`, `type`, `comfyui_url`.
-
----
-
-### ComfyUI Text to Image / Image to Image / Text to Video / Image to Video
-
-All four generation nodes share the same parameters:
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| ComfyUI URL | string | Base URL of your ComfyUI instance |
-| Session ID | string | Identifier to correlate this job with a conversation or request |
-| Workflow JSON | string | ComfyUI API-format workflow. Accepts both `{"prompt":{…}}` and the bare `{…}` prompt object. n8n expressions supported. |
-
-**Output:** `prompt_id`, `session_id`, `submitted: true`, `comfyui_url`.
+**Output:** all input fields plus `filename`, `subfolder`, `type`, `comfyui_url`
 
 ---
 
 ### ComfyUI Wait Until Result
 
+Poll ComfyUI until the job completes. Run this whenever you need the result — not necessarily right after submission.
+
+![Wait Until Result node](Screenshots/node_wait_until_result.png)
+
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | ComfyUI URL | string | `http://host.docker.internal:8188` | Base URL |
-| Prompt ID | string | `={{ $json.prompt_id }}` | `prompt_id` returned by an upstream generation node |
+| Prompt ID | string | `={{ $json.prompt_id }}` | `prompt_id` from an upstream generation node |
 | Session ID | string | `={{ $json.session_id }}` | Passed through to output |
-| Timeout (Seconds) | number | 120 | Throws if the job does not complete within this time |
+| Timeout (Seconds) | number | 120 | Throws if the job does not complete in time |
 | Poll Interval (Seconds) | number | 5 | How often to check ComfyUI's `/history` endpoint |
 
-**Output (one item per file):** `filename`, `type`, `subfolder`, `media_type`, `node_id`, `file_index`, `total_files`, `duration_ms`, `prompt_id`, `session_id`, `completed: true`, `comfyui_url`.
+**Output (one item per file):** `filename`, `type`, `subfolder`, `media_type`, `node_id`, `file_index`, `total_files`, `duration_ms`, `prompt_id`, `session_id`, `completed: true`, `comfyui_url`
 
-> **Note:** If ComfyUI completes a job in 0.00 s (identical workflow submitted twice with the same seed), this node throws immediately with a descriptive error rather than waiting for the full timeout. Use a random seed in your workflow to prevent deduplication.
+> **Note:** ComfyUI deduplicates identical workflows with the same seed. If a job completes in 0.00 s, this node throws immediately with a descriptive error. Use a random seed in your workflow to prevent deduplication.
 
 ---
 
 ### ComfyUI Get Results
+
+Download all generated files and return them as base64-encoded data.
+
+![Get Results node](Screenshots/node_get_results.png)
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
@@ -142,31 +143,76 @@ All four generation nodes share the same parameters:
 
 Accepts all items output by **Wait Until Result** and aggregates them into a single output item.
 
-**Output:** `success`, `prompt_id`, `unique_id`, `total_files`, `imageUrl[]`.
+**Output:** `success`, `prompt_id`, `unique_id`, `total_files`, `imageUrl[]`
 
-Each entry in `imageUrl`: `filename`, `type`, `subfolder`, `media_type`, `data` (base64-encoded file content).
+Each entry in `imageUrl`: `filename`, `type`, `subfolder`, `media_type`, `data` (base64)
+
+---
+
+### Session ID — Prompt ID Mapping
+
+Use `session_id` to correlate a ComfyUI job with a chat session, user ID, or any external identifier. It flows through every node and appears in the final output.
+
+![Session ID mapping](Screenshots/map_promptID_sessionID.png)
+
+---
+
+## Prerequisites
+
+- **n8n** ≥ 1.0.0 (self-hosted)
+- **ComfyUI** running and reachable from your n8n instance
+- A ComfyUI workflow exported in **API format**
+
+> To export: enable **Dev Mode** in ComfyUI settings (gear icon → Enable Dev Mode Options), then use **Save (API Format)**.
+
+---
 
 ## Troubleshooting
 
-**Node not appearing in n8n after installation**
+<details>
+<summary><strong>Node not appearing in n8n after installation</strong></summary>
+
 - Restart n8n after installing the package.
 - Verify the package is listed under Settings → Community Nodes.
 
-**`Connection refused` or `ECONNREFUSED` errors**
-- If n8n runs in Docker, use `http://host.docker.internal:8188` instead of `http://localhost:8188`.
-- Confirm ComfyUI is running and accessible from the n8n container: `curl http://host.docker.internal:8188/system_stats`.
+</details>
 
-**`Wait Until Result` times out**
+<details>
+<summary><strong>Connection refused / ECONNREFUSED</strong></summary>
+
+- If n8n runs in Docker, use `http://host.docker.internal:8188` instead of `http://localhost:8188`.
+- Confirm ComfyUI is reachable: `curl http://host.docker.internal:8188/system_stats`
+
+</details>
+
+<details>
+<summary><strong>Wait Until Result times out</strong></summary>
+
 - Increase the **Timeout** parameter.
 - Check ComfyUI's queue — another job may be blocking yours.
-- Make sure ComfyUI has a GPU available; CPU-only generation can take several minutes.
+- CPU-only generation can take several minutes; make sure a GPU is available.
 
-**`prompt_id not returned` error**
-- Ensure your Workflow JSON is valid ComfyUI API format. Export it fresh from ComfyUI using **Save (API Format)**.
+</details>
+
+<details>
+<summary><strong>prompt_id not returned</strong></summary>
+
+- Ensure your Workflow JSON is valid ComfyUI API format. Export it fresh using **Save (API Format)**.
 - The node accepts both `{"prompt":{…}}` and the bare `{…}` prompt object.
 
-**Duplicate workflow / 0.00 s completion**
-- ComfyUI deduplicates identical workflows with the same seed. Add a random seed to your workflow to force re-execution.
+</details>
+
+<details>
+<summary><strong>Permission denied error during installation (EACCES)</strong></summary>
+
+```bash
+docker exec -it --user root n8n chown -R node:node /home/node/.n8n/
+docker restart n8n
+```
+
+</details>
+
+---
 
 ## Development
 
@@ -180,19 +226,7 @@ npm test        # run Jest tests
 npm run lint    # ESLint
 ```
 
-## Publishing a new version
-
-1. Bump the version in `package.json`
-2. Commit and push
-3. Create a git tag:
-   ```bash
-   git tag v1.x.x
-   git push --tags
-   ```
-
-GitHub Actions will build, test, and publish to npm automatically.
-
-To configure publishing, add your npm token as a repository secret named **`NPM_TOKEN`** in GitHub → Settings → Secrets and variables → Actions.
+---
 
 ## Contributing
 

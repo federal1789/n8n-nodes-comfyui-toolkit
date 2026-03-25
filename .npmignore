@@ -1,0 +1,6 @@
+nodes/**/*.ts
+tsconfig.json
+*.map
+*.tgz
+deploy.sh
+.claude/
